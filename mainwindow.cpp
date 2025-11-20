@@ -5,6 +5,7 @@
 #include <QModelIndex>
 #include <QTextCursor>
 #include <QDebug>
+#include <QThread>
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -23,11 +24,11 @@ MainWindow::MainWindow(QWidget *parent)
     model->setStringList(stringList);
     ui->CommandList->setModel(model);
 
-    // Connect the buttons to slots
-    connect(ui->Save, &QPushButton::clicked, this, &MainWindow::on_Save_clicked);
-    connect(ui->DeleteFromList, &QPushButton::clicked, this, &MainWindow::on_DeleteFromList_clicked);
-    connect(ui->RunFromList, &QPushButton::clicked, this, &MainWindow::on_RunFromList_clicked);
-    connect(ui->Run, &QPushButton::clicked, this, &MainWindow::on_Run_clicked);
+    // // Connect the buttons to slots
+    // connect(ui->Run, &QPushButton::clicked, this, &MainWindow::on_Run_clicked, Qt::UniqueConnection);
+    // connect(ui->Save, &QPushButton::clicked, this, &MainWindow::on_Save_clicked, Qt::UniqueConnection);
+    // connect(ui->DeleteFromList, &QPushButton::clicked, this, &MainWindow::on_DeleteFromList_clicked, Qt::UniqueConnection);
+    // connect(ui->RunFromList, &QPushButton::clicked, this, &MainWindow::on_RunFromList_clicked, Qt::UniqueConnection);
 
     // Connect process signals
     connect(process, &QProcess::readyReadStandardOutput, this, &MainWindow::on_readyReadStandardOutput);
@@ -89,9 +90,13 @@ void MainWindow::on_Save_clicked()
 
 void MainWindow::on_Run_clicked()
 {
+    // Set enabled while running this part
+    ui->Run->setEnabled(false);
+
     // Check if process is already running
     if (process->state() == QProcess::Running){
         QMessageBox::information(this, "Process information", "Process is already running. Please wait!");
+        ui->Run->setEnabled(true);
         return;
     }
 
@@ -102,30 +107,47 @@ void MainWindow::on_Run_clicked()
     // Work with it if it is not empty
     if (!text.isEmpty()){
         // Clear previous output
-        ui->textEdit->clear();
+        // ui->textEdit->clear();
 
         // Add starting message
         ui->textEdit->append(">>> Running command: " + text + "\n");
 
-        // Disable the run button while command is executing
-        ui->RunFromList->setEnabled(false);
+        // Change button text while running
         ui->RunFromList->setText("Running...");
 
         // Start the process
         process->start("bash", QStringList() << "-c" << text);
     }
+    else {
+        // No command message
+        ui->textEdit->append(">>> Type a command \n");
+
+        // Re-enable if no command to execute
+        ui->Run->setEnabled(true);
+    }
+
+    // Release the button
+    ui->Run->setEnabled(true);
 }
 
 void MainWindow::on_DeleteFromList_clicked()
 {
-    // Get the currently selected item
-    QModelIndex currentIndex = ui->CommandList->currentIndex();
+    // Disable delete button
+    ui->DeleteFromList->setEnabled(false);
+    ui->DeleteFromList->setText("Deleting");
 
-    // Check if an item is selected
-    if (!currentIndex.isValid()) {
+    // Get the selection model to check if anything is actually selected
+    QItemSelectionModel *selectionModel = ui->CommandList->selectionModel();
+
+    // Check if there are any selected items
+    if (!selectionModel || !selectionModel->hasSelection()) {
         QMessageBox::warning(this, "No Selection", "Please select an item to delete.");
+        ui->DeleteFromList->setEnabled(true);
         return;
     }
+
+    // Get the first selected item (in case of multiple selection)
+    QModelIndex currentIndex = selectionModel->selectedIndexes().first();
 
     // Get the text of the selected item for the confirmation message
     QString selectedText = currentIndex.data(Qt::DisplayRole).toString();
@@ -147,11 +169,10 @@ void MainWindow::on_DeleteFromList_clicked()
         // Save immediately after deleting
         saveCommandList();
 
-        // Optional: Select the next item or clear selection if list is empty
-        if (!stringList.isEmpty()) {
-            int newIndex = qMin(currentIndex.row(), stringList.size() - 1);
-            ui->CommandList->setCurrentIndex(model->index(newIndex));
-        }
+        // Clear the current selection
+        ui->CommandList->clearSelection();
+
+        ui->DeleteFromList->setEnabled(true);
     }
 }
 
@@ -164,20 +185,23 @@ void MainWindow::on_RunFromList_clicked()
         return;
     }
 
-    // Get the currently selected item
-    QModelIndex currentIndex = ui->CommandList->currentIndex();
+    // Get the selection model to check if anything is actually selected
+    QItemSelectionModel *selectionModel = ui->CommandList->selectionModel();
 
-    // Check if an item is selected
-    if (!currentIndex.isValid()) {
+    // Check if there are any selected items
+    if (!selectionModel || !selectionModel->hasSelection()) {
         QMessageBox::warning(this, "No Selection", "Please select an item to delete.");
         return;
     }
+
+    // Get the first selected item (in case of multiple selection)
+    QModelIndex currentIndex = selectionModel->selectedIndexes().first();
 
     // Get the text of the selected item for the confirmation message
     QString command = currentIndex.data(Qt::DisplayRole).toString();
 
     // Clear previous output
-    ui->textEdit->clear();
+    // ui->textEdit->clear();
 
     // Add starting message
     ui->textEdit->append(">>> Running command: " + command + "\n");
